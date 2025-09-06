@@ -6,13 +6,7 @@ on:
     paths:
       - 'scripts/prod/**'
       - 'config/prod.yml'
-  workflow_dispatch:
-    inputs:
-      skip_quality_checks:
-        description: 'Skip data quality checks'
-        required: false
-        default: 'false'
-        type: boolean
+
 
 jobs:
   pre-deployment-checks:

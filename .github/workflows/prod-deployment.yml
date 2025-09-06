@@ -6,20 +6,59 @@ on:
     paths:
       - 'scripts/prod/**'
       - 'config/prod.yml'
-
+  # Optional: Add manual trigger
+  workflow_dispatch:
+    inputs:
+      skip_validation:
+        description: 'Skip post-deployment validation'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 jobs:
   pre-deployment-checks:
     runs-on: ubuntu-latest
+    
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
-      
-    - name: Validate Scripts
+      uses: actions/checkout@v4
+    
+    - name: Validate Required Files
       run: |
-        # Check if all required files exist
-        find scripts/prod -name "*.sql" -exec echo "Validating: {}" \;
+        echo "🔍 Checking repository structure..."
         
+        # Check if config file exists
+        if [ -f "config/prod.yml" ]; then
+          echo "✅ Production config file found"
+        else
+          echo "❌ config/prod.yml not found"
+          exit 1
+        fi
+        
+        # Check if deployment script exists
+        if [ -f "scripts/utils/deploy.py" ]; then
+          echo "✅ Deployment script found"
+        else
+          echo "❌ scripts/utils/deploy.py not found"
+          exit 1
+        fi
+        
+        # Check if SQL scripts exist
+        if [ -d "scripts/prod" ]; then
+          sql_count=$(find scripts/prod -name "*.sql" | wc -l)
+          if [ $sql_count -gt 0 ]; then
+            echo "✅ Found $sql_count SQL script(s) for deployment"
+            find scripts/prod -name "*.sql" -exec echo "  - {}" \;
+          else
+            echo "⚠️  No SQL scripts found in scripts/prod/ directory"
+          fi
+        else
+          echo "⚠️  scripts/prod/ directory not found"
+        fi
+
   deploy-prod:
     needs: pre-deployment-checks
     runs-on: ubuntu-latest
@@ -27,7 +66,7 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
     
     - name: Setup Python
       uses: actions/setup-python@v4
@@ -38,8 +77,6 @@ jobs:
       run: |
         pip install snowflake-connector-python pyyaml
     
-  
-    
     - name: Deploy to Production
       env:
         SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
@@ -48,10 +85,11 @@ jobs:
         SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
         SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
       run: |
+        echo "🚀 Starting production deployment..."
         python scripts/utils/deploy.py --environment prod
     
-    - name: Run Post-Deployment Validation
-      if: ${{ github.event.inputs.skip_quality_checks != 'true' }}
+    - name: Run Basic Validation
+      if: ${{ github.event.inputs.skip_validation != 'true' }}
       env:
         SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
         SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -59,9 +97,20 @@ jobs:
         SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
         SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
       run: |
-        python scripts/utils/data_quality_validator.py --environment prod
-        
-    - name: Notify on Success
-      if: success()
-      run: echo "Production deployment completed successfully!"
-      
+        echo "🔍 Running basic post-deployment validation..."
+        python scripts/utils/basic_validator.py --environment prod
+    
+    - name: Deployment Summary
+      if: always()
+      run: |
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "✅ Production deployment completed successfully!"
+          echo "📊 Deployment Summary:"
+          echo "  - Environment: Production"
+          echo "  - Branch: ${{ github.ref_name }}"
+          echo "  - Commit: ${{ github.sha }}"
+          echo "  - Triggered by: ${{ github.actor }}"
+        else
+          echo "❌ Production deployment failed!"
+          echo "Please check the logs above for details."
+        fi

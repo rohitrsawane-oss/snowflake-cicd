@@ -1,0 +1,10 @@
+environment: prod
+database: PROD_DATABASE
+schemas:
+  - BRONZE
+  - SILVER
+  - GOLD
+  - CORTEX
+  - AUDIT
+warehouse: COMPUTE_WH
+role: SYSADMIN

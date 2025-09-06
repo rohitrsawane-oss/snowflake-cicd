@@ -1,0 +1,10 @@
+environment: dev
+database: DEV_DATABASE
+schemas:
+  - BRONZE
+  - SILVER
+  - GOLD
+  - CORTEX
+  - AUDIT
+warehouse: COMPUTE_WH
+role: DEV_SYSADMIN

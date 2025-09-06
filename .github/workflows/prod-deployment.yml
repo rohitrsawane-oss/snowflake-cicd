@@ -44,15 +44,7 @@ jobs:
       run: |
         pip install snowflake-connector-python pyyaml
     
-    - name: Backup Current Prod (if exists)
-      env:
-        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-        SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-      run: |
-        python scripts/utils/backup.py --environment prod
+  
     
     - name: Deploy to Production
       env:
@@ -79,13 +71,3 @@ jobs:
       if: success()
       run: echo "Production deployment completed successfully!"
       
-    - name: Rollback on Failure
-      if: failure()
-      env:
-        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-        SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-      run: |
-        python scripts/utils/rollback.py --environment prod

@@ -1,45 +1,6 @@
 USE DATABASE {DATABASE_NAME};
 USE SCHEMA SCH_TRUSTCAB_AUDIT;
 
-CREATE OR REPLACE PROCEDURE SCH_TRUSTCAB_AUDIT.LOAD_FILES_FROM_ARCHIVE_TO_EPIC("BRONZE_TABLE_NAME" VARCHAR)
-RETURNS VARCHAR
-LANGUAGE SQL
-EXECUTE AS OWNER
-AS '
-DECLARE
-    v_stage_name VARCHAR;
-    v_azure_file_path VARCHAR;
-    v_archive_file_path VARCHAR;
-    v_sql VARCHAR;
-    v_result VARCHAR DEFAULT ''Success'';
-BEGIN
-    -- Fetch metadata for the given table
-    SELECT  STAGE_NAME, AZURE_FILE_PATH, COMPLETE_ARCHIVE_FILE_PATH
-    INTO  v_stage_name, v_azure_file_path, v_archive_file_path
-    FROM TRUSTCAB_PROD.SCH_TRUSTCAB_AUDIT.FILE_LOAD_METADATA
-    WHERE BRONZE_TABLE_NAME = :BRONZE_TABLE_NAME
-    AND IS_ACTIVE = ''TRUE'';
-    
-    -- Check if metadata exists
-    IF (v_stage_name IS NULL) THEN
-        RETURN ''Error: No active metadata found for table '' || :BRONZE_TABLE_NAME;
-    END IF;
-
-    -- Dynamic SQL to copy files to archive using COPY FILES
-    v_sql := ''COPY FILES INTO @'' || v_stage_name || ''/'' || v_azure_file_path || 
-             '' FROM @'' || v_stage_name || ''/'' || v_archive_file_path;
-    
-    -- Execute the COPY command
-    EXECUTE IMMEDIATE v_sql;
-
-    RETURN v_result;
-EXCEPTION
-    WHEN STATEMENT_ERROR THEN
-        RETURN ''Error: SQL execution failed - '' || SQLERRM;
-    WHEN OTHER THEN
-        RETURN ''Error: Unexpected error - '' || SQLERRM;
-END;
-';
 
 CREATE OR REPLACE PROCEDURE SCH_TRUSTCAB_AUDIT.LOAD_FILES_FROM_EPIC_STAGE("BRONZE_TABLE_NAME" VARCHAR)
 RETURNS VARCHAR

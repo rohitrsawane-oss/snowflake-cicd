@@ -94,20 +94,37 @@ def execute_task_file(cursor, file_path, replacements=None):
     # Parse tasks
     tasks = parse_task_sql(sql_content)
     
-    for task in tasks:
+    if not tasks:
+        print(f"⚠️ No valid tasks found in {file_path}")
+        return
+    
+    for i, task in enumerate(tasks):
         try:
             # Extract task name for better logging
-            task_name_match = re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?TASK\s+(\w+)', task, re.IGNORECASE)
-            task_name = task_name_match.group(1) if task_name_match else "Unknown"
+            task_name_match = re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?TASK\s+([\w.]+)', task, re.IGNORECASE)
+            task_name = task_name_match.group(1) if task_name_match else f"Task_{i+1}"
             
             print(f"Executing task: {task_name}...")
+            
+            # Debug: Print the complete task SQL being executed
+            print(f"📋 Complete Task SQL:")
+            print("-" * 50)
+            print(task)
+            print("-" * 50)
+            
+            # Validate task structure
+            if 'BEGIN' in task.upper() and 'END' not in task.upper():
+                print("❌ ERROR: Task contains BEGIN but no END block!")
+                raise ValueError(f"Incomplete task structure for {task_name} - missing END block")
             
             # Execute the complete task as a single statement
             cursor.execute(task)
             print("✅ Task created/updated successfully")
+            
         except Exception as e:
-            print(f"❌ Error executing task: {e}")
-            print(f"Task SQL: {task[:500]}...")  # Show first 500 chars for debugging
+            print(f"❌ Error executing task {task_name}: {e}")
+            print(f"Task SQL length: {len(task)} characters")
+            print(f"Task ends with: '{task[-50:]}'" if len(task) > 50 else f"Complete task: '{task}'")
             raise
 
 def deploy_tasks(environment):

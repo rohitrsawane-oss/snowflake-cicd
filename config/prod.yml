@@ -1,10 +1,10 @@
 environment: prod
-database: PROD_DATABASE
+database: TRUSTCAB_PROD
 schemas:
-  - BRONZE
-  - SILVER
-  - GOLD
-  - CORTEX
-  - AUDIT
+  - SCH_TRUSTCAB_BRONZE
+  - SCH_TRUSTCAB_SILVER
+  - SCH_TRUSTCAB_GOLD
+  - CORTEX_DEMO_SCH
+  - SCH_TRUSTCAB_AUDIT
 warehouse: COMPUTE_WH
 role: SYSADMIN

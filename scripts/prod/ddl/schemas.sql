@@ -1,8 +1,12 @@
 USE DATABASE {DATABASE_NAME};
-
 -- Create schemas
-CREATE SCHEMA IF NOT EXISTS BRONZE COMMENT = 'Raw data layer';
-CREATE SCHEMA IF NOT EXISTS SILVER COMMENT = 'Cleansed data layer';
-CREATE SCHEMA IF NOT EXISTS GOLD COMMENT = 'Business logic layer';
-CREATE SCHEMA IF NOT EXISTS CORTEX COMMENT = 'AI/ML models and features';
-CREATE SCHEMA IF NOT EXISTS AUDIT COMMENT = 'Audit and logging';
+
+create or replace schema CORTEX_DEMO_SCH COMMENT='Temporary schema for Cortex AI demo';
+
+create or replace schema SCH_TRUSTCAB_AUDIT;
+
+create or replace schema SCH_TRUSTCAB_BRONZE COMMENT='Raw/Landing zone - Bronze layer for ingested data';
+
+create or replace schema SCH_TRUSTCAB_GOLD COMMENT='Curated/Consumption layer - Gold layer for analytics';
+
+create or replace schema SCH_TRUSTCAB_SILVER COMMENT='Transformed/Cleansed data - Silver layer for business logic';

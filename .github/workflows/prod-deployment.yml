@@ -17,6 +17,16 @@ on:
         options:
           - 'true'
           - 'false'
+      deployment_type:
+        description: 'Type of deployment'
+        required: false
+        default: 'full'
+        type: choice
+        options:
+          - 'full'
+          - 'ddl-only'
+          - 'procedures-only'
+          - 'tasks-only'
 
 jobs:
   pre-deployment-checks:
@@ -38,31 +48,63 @@ jobs:
           exit 1
         fi
         
-        # Check if deployment script exists
-        if [ -f "scripts/utils/deploy.py" ]; then
-          echo "✅ Deployment script found"
+        # Check if deployment scripts exist
+        if [ -f "scripts/utils/deploy_tables.py" ]; then
+          echo "✅ DDL/Tables deployment script found"
         else
-          echo "❌ scripts/utils/deploy.py not found"
+          echo "❌ scripts/utils/deploy_tables.py not found"
+          exit 1
+        fi
+        
+        if [ -f "scripts/utils/deploy_stored_procedures.py" ]; then
+          echo "✅ Stored procedures deployment script found"
+        else
+          echo "❌ scripts/utils/deploy_stored_procedures.py not found"
+          exit 1
+        fi
+        
+        if [ -f "scripts/utils/deploy_tasks.py" ]; then
+          echo "✅ Tasks deployment script found"
+        else
+          echo "❌ scripts/utils/deploy_tasks.py not found"
           exit 1
         fi
         
         # Check if SQL scripts exist
         if [ -d "scripts/prod" ]; then
-          sql_count=$(find scripts/prod -name "*.sql" | wc -l)
-          if [ $sql_count -gt 0 ]; then
-            echo "✅ Found $sql_count SQL script(s) for deployment"
-            find scripts/prod -name "*.sql" -exec echo "  - {}" \;
+          echo "📁 Checking SQL scripts in different categories:"
+          
+          # Check DDL scripts
+          ddl_count=$(find scripts/prod/ddl -name "*.sql" 2>/dev/null | wc -l)
+          echo "  - DDL scripts: $ddl_count"
+          
+          # Check stored procedure scripts
+          sp_count=$(find scripts/prod/stored_procedures -name "*.sql" 2>/dev/null | wc -l)
+          echo "  - Stored procedure scripts: $sp_count"
+          
+          # Check task scripts
+          task_count=$(find scripts/prod/tasks -name "*.sql" 2>/dev/null | wc -l)
+          echo "  - Task scripts: $task_count"
+          
+          # Check RBAC scripts
+          rbac_count=$(find scripts/prod/rbac -name "*.sql" 2>/dev/null | wc -l)
+          echo "  - RBAC scripts: $rbac_count"
+          
+          total_count=$(find scripts/prod -name "*.sql" | wc -l)
+          if [ $total_count -gt 0 ]; then
+            echo "✅ Found $total_count SQL script(s) for deployment"
           else
-            echo "⚠️  No SQL scripts found in scripts/prod/ directory"
+            echo "⚠️ No SQL scripts found in scripts/prod/ directory"
           fi
         else
-          echo "⚠️  scripts/prod/ directory not found"
+          echo "⚠️ scripts/prod/ directory not found"
         fi
 
-  deploy-prod:
+  deploy-ddl-tables:
     needs: pre-deployment-checks
     runs-on: ubuntu-latest
     environment: production
+    if: ${{ github.event.inputs.deployment_type == 'full' || github.event.inputs.deployment_type == 'ddl-only' || github.event.inputs.deployment_type == '' }}
     
     steps:
     - name: Checkout code
@@ -77,7 +119,7 @@ jobs:
       run: |
         pip install snowflake-connector-python pyyaml
     
-    - name: Deploy to Production
+    - name: Deploy DDL and Tables
       env:
         SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
         SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -85,11 +127,89 @@ jobs:
         SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
         SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
       run: |
-        echo "🚀 Starting production deployment..."
-        python scripts/utils/deploy.py --environment prod
+        echo "🚀 Starting DDL and Tables deployment..."
+        python scripts/utils/deploy_tables.py --environment prod
+
+  deploy-stored-procedures:
+    needs: [pre-deployment-checks, deploy-ddl-tables]
+    runs-on: ubuntu-latest
+    environment: production
+    if: ${{ always() && (needs.deploy-ddl-tables.result == 'success' || needs.deploy-ddl-tables.result == 'skipped') && (github.event.inputs.deployment_type == 'full' || github.event.inputs.deployment_type == 'procedures-only' || github.event.inputs.deployment_type == '') }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        pip install snowflake-connector-python pyyaml
+    
+    - name: Deploy Stored Procedures
+      env:
+        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      run: |
+        echo "🚀 Starting stored procedures deployment..."
+        python scripts/utils/deploy_stored_procedures.py --environment prod
+
+  deploy-tasks:
+    needs: [pre-deployment-checks, deploy-ddl-tables, deploy-stored-procedures]
+    runs-on: ubuntu-latest
+    environment: production
+    if: ${{ always() && (needs.deploy-stored-procedures.result == 'success' || needs.deploy-stored-procedures.result == 'skipped') && (github.event.inputs.deployment_type == 'full' || github.event.inputs.deployment_type == 'tasks-only' || github.event.inputs.deployment_type == '') }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        pip install snowflake-connector-python pyyaml
+    
+    - name: Deploy Tasks
+      env:
+        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      run: |
+        echo "🚀 Starting tasks deployment..."
+        python scripts/utils/deploy_tasks.py --environment prod
+    
+  post-deployment-validation:
+    needs: [deploy-ddl-tables, deploy-stored-procedures, deploy-tasks]
+    runs-on: ubuntu-latest
+    environment: production
+    if: ${{ always() && github.event.inputs.skip_validation != 'true' && (needs.deploy-tasks.result == 'success' || needs.deploy-tasks.result == 'skipped') }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        pip install snowflake-connector-python pyyaml
     
     - name: Run Basic Validation
-      if: ${{ github.event.inputs.skip_validation != 'true' }}
       env:
         SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
         SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -100,17 +220,36 @@ jobs:
         echo "🔍 Running basic post-deployment validation..."
         python scripts/utils/basic_validator.py --environment prod
     
+  deployment-summary:
+    needs: [deploy-ddl-tables, deploy-stored-procedures, deploy-tasks, post-deployment-validation]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
     - name: Deployment Summary
-      if: always()
       run: |
-        if [ "${{ job.status }}" == "success" ]; then
+        echo "📊 Production Deployment Summary:"
+        echo "================================"
+        echo "  - Environment: Production"
+        echo "  - Branch: ${{ github.ref_name }}"
+        echo "  - Commit: ${{ github.sha }}"
+        echo "  - Triggered by: ${{ github.actor }}"
+        echo "  - Deployment Type: ${{ github.event.inputs.deployment_type || 'full' }}"
+        echo ""
+        echo "Job Results:"
+        echo "  - DDL/Tables: ${{ needs.deploy-ddl-tables.result }}"
+        echo "  - Stored Procedures: ${{ needs.deploy-stored-procedures.result }}"
+        echo "  - Tasks: ${{ needs.deploy-tasks.result }}"
+        echo "  - Validation: ${{ needs.post-deployment-validation.result }}"
+        echo ""
+        
+        # Check overall success
+        if [[ "${{ needs.deploy-ddl-tables.result }}" == "success" || "${{ needs.deploy-ddl-tables.result }}" == "skipped" ]] && \
+           [[ "${{ needs.deploy-stored-procedures.result }}" == "success" || "${{ needs.deploy-stored-procedures.result }}" == "skipped" ]] && \
+           [[ "${{ needs.deploy-tasks.result }}" == "success" || "${{ needs.deploy-tasks.result }}" == "skipped" ]]; then
           echo "✅ Production deployment completed successfully!"
-          echo "📊 Deployment Summary:"
-          echo "  - Environment: Production"
-          echo "  - Branch: ${{ github.ref_name }}"
-          echo "  - Commit: ${{ github.sha }}"
-          echo "  - Triggered by: ${{ github.actor }}"
         else
           echo "❌ Production deployment failed!"
           echo "Please check the logs above for details."
+          exit 1
         fi

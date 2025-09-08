@@ -32,7 +32,7 @@ BEGIN
     -- Dynamic SQL to copy files to archive using COPY FILES
     v_sql := ''COPY FILES INTO @'' ||
 v_stage_name || ''/'' || v_azure_file_path || ''/'' ||
-               '' FROM @'' || v_stage_name || ''/'' || v_archive_file_path ||;
+               '' FROM @'' || v_stage_name || ''/'' || v_archive_file_path;
 -- Execute the COPY command
     EXECUTE IMMEDIATE v_sql;
 

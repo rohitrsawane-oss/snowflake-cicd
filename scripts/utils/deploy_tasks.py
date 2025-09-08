@@ -21,99 +21,96 @@ def connect_snowflake():
         warehouse=os.getenv('SNOWFLAKE_WAREHOUSE')
     )
 
-def parse_task_sql(sql_content):
-    """Parse task SQL content to handle multi-statement BEGIN/END blocks"""
-    tasks = []
+def parse_task_sql_simple(sql_content):
+    """Simple parsing that reads the entire file as one task if it contains CREATE TASK"""
+    # Remove leading/trailing whitespace
+    sql_content = sql_content.strip()
     
-    # Pattern to match CREATE OR REPLACE TASK statements
-    # This handles tasks with BEGIN/END blocks containing multiple statements
-    task_pattern = r'(CREATE\s+(?:OR\s+REPLACE\s+)?TASK\s+\w+.*?(?:BEGIN.*?END|AS\s+.*?);)'
+    # Check if this looks like a task file
+    if not re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?TASK', sql_content, re.IGNORECASE):
+        return []
     
-    matches = re.finditer(task_pattern, sql_content, re.DOTALL | re.IGNORECASE)
+    # For files with single tasks, just return the entire content
+    # This assumes each .sql file contains one complete task
     
-    for match in matches:
-        task_sql = match.group(1).strip()
-        if task_sql:
-            tasks.append(task_sql)
+    # Basic validation: if there's BEGIN, there should be END
+    has_begin = 'BEGIN' in sql_content.upper()
+    has_end = re.search(r'\bEND\s*;?\s*$', sql_content, re.IGNORECASE | re.MULTILINE)
     
-    # If no tasks found with regex, try a different approach
-    if not tasks:
-        # Look for CREATE TASK patterns and extract complete statements
-        lines = sql_content.split('\n')
-        current_task = ""
-        in_task = False
-        begin_end_depth = 0
-        
-        for line in lines:
-            line_upper = line.strip().upper()
-            
-            if line_upper.startswith('CREATE') and 'TASK' in line_upper:
-                in_task = True
-                current_task = line + '\n'
-            elif in_task:
-                current_task += line + '\n'
-                
-                if 'BEGIN' in line_upper:
-                    begin_end_depth += 1
-                elif 'END' in line_upper:
-                    begin_end_depth -= 1
-                    if begin_end_depth <= 0:
-                        # End of task found
-                        if line.strip().endswith(';'):
-                            tasks.append(current_task.strip())
-                            current_task = ""
-                            in_task = False
-                            begin_end_depth = 0
-                elif line.strip().endswith(';') and begin_end_depth == 0:
-                    # Simple task without BEGIN/END
-                    tasks.append(current_task.strip())
-                    current_task = ""
-                    in_task = False
-        
-        # Add any remaining task
-        if current_task.strip():
-            tasks.append(current_task.strip())
+    if has_begin and not has_end:
+        print("⚠️ Warning: Task has BEGIN but no END. Adding END;")
+        if not sql_content.endswith(';'):
+            sql_content += '\nEND;'
+        else:
+            sql_content += '\nEND;'
+    elif has_begin and has_end:
+        # Ensure it ends with semicolon
+        if not sql_content.strip().endswith(';'):
+            sql_content = sql_content.strip() + ';'
     
-    # If still no tasks found, fall back to basic semicolon splitting
-    if not tasks:
-        potential_tasks = [stmt.strip() for stmt in sql_content.split(';') if stmt.strip()]
-        tasks = [task for task in potential_tasks if 'CREATE' in task.upper() and 'TASK' in task.upper()]
-    
-    return tasks
+    return [sql_content]
 
-def execute_task_file(cursor, file_path, replacements=None):
-    """Execute task file with parameter replacement"""
+def execute_task_file_debug(cursor, file_path, replacements=None):
+    """Execute task file with extensive debugging"""
+    print(f"\n🔍 DEBUG: Reading file {file_path}")
+    
+    # Read and display raw file content
     with open(file_path, 'r') as file:
         sql_content = file.read()
     
+    print(f"📄 Raw file content ({len(sql_content)} characters):")
+    print("=" * 80)
+    print(sql_content)
+    print("=" * 80)
+    
+    # Show file ending explicitly
+    print(f"📍 File ends with: '{sql_content[-100:]}'" if len(sql_content) > 100 else f"Complete file: '{sql_content}'")
+    
     # Replace parameters if provided
     if replacements:
+        original_content = sql_content
         for key, value in replacements.items():
             sql_content = sql_content.replace(f'{{{key}}}', value)
+        if sql_content != original_content:
+            print(f"\n🔄 After parameter replacement:")
+            print("=" * 80)
+            print(sql_content)
+            print("=" * 80)
     
-    # Parse tasks
-    tasks = parse_task_sql(sql_content)
+    # Parse tasks using simple method
+    tasks = parse_task_sql_simple(sql_content)
+    
+    print(f"\n📊 Parsing results: Found {len(tasks)} task(s)")
     
     if not tasks:
-        print(f"⚠️ No valid tasks found in {file_path}")
+        print(f"❌ No valid tasks found in {file_path}")
         return
     
     for i, task in enumerate(tasks):
+        print(f"\n🎯 Task {i+1}:")
+        print(f"   Length: {len(task)} characters")
+        print(f"   Starts with: '{task[:50]}...'")
+        print(f"   Ends with: '...{task[-50:]}'" if len(task) > 50 else f"   Complete: '{task}'")
+        
+        # Check for BEGIN/END balance
+        has_begin = 'BEGIN' in task.upper()
+        has_end = 'END' in task.upper()
+        print(f"   Has BEGIN: {has_begin}")
+        print(f"   Has END: {has_end}")
+        
         try:
             # Extract task name for better logging
             task_name_match = re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?TASK\s+([\w.]+)', task, re.IGNORECASE)
             task_name = task_name_match.group(1) if task_name_match else f"Task_{i+1}"
             
-            print(f"Executing task: {task_name}...")
-            
-            # Debug: Print the complete task SQL being executed
-            print(f"📋 Complete Task SQL:")
-            print("-" * 50)
+            print(f"\n🚀 Executing task: {task_name}")
+            print("📋 Complete Task SQL being sent to Snowflake:")
+            print("-" * 60)
             print(task)
-            print("-" * 50)
+            print("-" * 60)
             
-            # Validate task structure
-            if 'BEGIN' in task.upper() and 'END' not in task.upper():
+            # Validate task structure before execution
+            if has_begin and not has_end:
                 print("❌ ERROR: Task contains BEGIN but no END block!")
                 raise ValueError(f"Incomplete task structure for {task_name} - missing END block")
             
@@ -123,12 +120,14 @@ def execute_task_file(cursor, file_path, replacements=None):
             
         except Exception as e:
             print(f"❌ Error executing task {task_name}: {e}")
-            print(f"Task SQL length: {len(task)} characters")
-            print(f"Task ends with: '{task[-50:]}'" if len(task) > 50 else f"Complete task: '{task}'")
+            print(f"🔍 Debug info:")
+            print(f"   Task SQL length: {len(task)} characters")
+            print(f"   Task starts: '{task[:100]}'")
+            print(f"   Task ends: '{task[-100:]}'" if len(task) > 100 else f"   Complete task: '{task}'")
             raise
 
-def deploy_tasks(environment):
-    """Deploy tasks to specified environment"""
+def deploy_tasks_debug(environment):
+    """Deploy tasks with extensive debugging"""
     config = load_config(environment)
     conn = connect_snowflake()
     cursor = conn.cursor()
@@ -141,18 +140,34 @@ def deploy_tasks(environment):
             'ROLE_NAME': config['role']
         }
         
+        print(f"🔧 Configuration for {environment}:")
+        for key, value in replacements.items():
+            print(f"   {key}: {value}")
+        
         # Deploy tasks only
         folder_path = f"scripts/{environment}/tasks"
+        print(f"\n📂 Looking for tasks in: {folder_path}")
+        
         if os.path.exists(folder_path):
-            print(f"\n📂 Deploying tasks...")
+            print(f"✅ Tasks directory found")
             sql_files = glob.glob(f"{folder_path}/*.sql")
             sql_files.sort()  # Ensure consistent order
             
+            print(f"📁 Found {len(sql_files)} SQL file(s):")
             for sql_file in sql_files:
-                print(f"Processing task file: {sql_file}...")
-                execute_task_file(cursor, sql_file, replacements)
+                print(f"   - {sql_file}")
+            
+            if not sql_files:
+                print("⚠️ No .sql files found in tasks directory")
+                return
+            
+            for sql_file in sql_files:
+                print(f"\n" + "="*80)
+                print(f"🗃️ Processing task file: {sql_file}")
+                print("="*80)
+                execute_task_file_debug(cursor, sql_file, replacements)
         else:
-            print(f"⚠️ No tasks directory found at {folder_path}")
+            print(f"❌ Tasks directory not found at {folder_path}")
         
         print(f"\n🎉 {environment.upper()} tasks deployment completed successfully!")
         
@@ -161,8 +176,8 @@ def deploy_tasks(environment):
         conn.close()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Deploy Tasks to Snowflake environment')
+    parser = argparse.ArgumentParser(description='Deploy Tasks to Snowflake environment with debugging')
     parser.add_argument('--environment', required=True, choices=['dev', 'prod'])
     args = parser.parse_args()
     
-    deploy_tasks(args.environment)
+    deploy_tasks_debug(args.environment)

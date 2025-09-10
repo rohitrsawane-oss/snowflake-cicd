@@ -57,7 +57,7 @@ def deploy_tables_ddl(environment):
         }
         
         # Deploy DDL and RBAC only
-        deployment_order = ['ddl', 'rbac']
+        deployment_order = ['ddl', 'rbac', 'tasks']
         
         for folder in deployment_order:
             folder_path = f"scripts/{environment}/{folder}"

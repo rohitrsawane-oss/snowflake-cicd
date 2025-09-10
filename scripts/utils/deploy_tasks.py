@@ -21,113 +21,240 @@ def connect_snowflake():
         warehouse=os.getenv('SNOWFLAKE_WAREHOUSE')
     )
 
-def parse_task_sql_simple(sql_content):
-    """Simple parsing that reads the entire file as one task if it contains CREATE TASK"""
-    # Remove leading/trailing whitespace
-    sql_content = sql_content.strip()
-    
-    # Check if this looks like a task file
-    if not re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?TASK', sql_content, re.IGNORECASE):
-        return []
-    
-    # For files with single tasks, just return the entire content
-    # This assumes each .sql file contains one complete task
-    
-    # Basic validation: if there's BEGIN, there should be END
-    has_begin = 'BEGIN' in sql_content.upper()
-    has_end = re.search(r'\bEND\s*;?\s*$', sql_content, re.IGNORECASE | re.MULTILINE)
-    
-    if has_begin and not has_end:
-        print("⚠️ Warning: Task has BEGIN but no END. Adding END;")
-        if not sql_content.endswith(';'):
-            sql_content += '\nEND;'
-        else:
-            sql_content += '\nEND;'
-    elif has_begin and has_end:
-        # Ensure it ends with semicolon
-        if not sql_content.strip().endswith(';'):
-            sql_content = sql_content.strip() + ';'
-    
-    return [sql_content]
-
-def execute_task_file_debug(cursor, file_path, replacements=None):
-    """Execute task file with extensive debugging"""
-    print(f"\n🔍 DEBUG: Reading file {file_path}")
-    
-    # Read and display raw file content
-    with open(file_path, 'r') as file:
-        sql_content = file.read()
-    
-    print(f"📄 Raw file content ({len(sql_content)} characters):")
-    print("=" * 80)
-    print(sql_content)
-    print("=" * 80)
-    
-    # Show file ending explicitly
-    print(f"📍 File ends with: '{sql_content[-100:]}'" if len(sql_content) > 100 else f"Complete file: '{sql_content}'")
+def prepare_task_sql(sql_content, replacements=None):
+    """Prepare task SQL by ensuring proper formatting for multi-statement tasks"""
     
     # Replace parameters if provided
     if replacements:
-        original_content = sql_content
         for key, value in replacements.items():
             sql_content = sql_content.replace(f'{{{key}}}', value)
-        if sql_content != original_content:
-            print(f"\n🔄 After parameter replacement:")
-            print("=" * 80)
-            print(sql_content)
-            print("=" * 80)
     
-    # Parse tasks using simple method
-    tasks = parse_task_sql_simple(sql_content)
+    # Remove extra whitespace and normalize
+    sql_content = sql_content.strip()
     
-    print(f"\n📊 Parsing results: Found {len(tasks)} task(s)")
+    # Check if this is a task creation statement
+    if not re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?TASK', sql_content, re.IGNORECASE):
+        return None, "Not a task creation statement"
     
-    if not tasks:
-        print(f"❌ No valid tasks found in {file_path}")
-        return
-    
-    for i, task in enumerate(tasks):
-        print(f"\n🎯 Task {i+1}:")
-        print(f"   Length: {len(task)} characters")
-        print(f"   Starts with: '{task[:50]}...'")
-        print(f"   Ends with: '...{task[-50:]}'" if len(task) > 50 else f"   Complete: '{task}'")
+    # Handle tasks with BEGIN...END blocks that contain multiple semicolons
+    if re.search(r'BEGIN\s*\n.*?END\s*;?\s*$', sql_content, re.IGNORECASE | re.DOTALL):
+        # This is a multi-statement task with BEGIN...END
+        print("🔍 Detected multi-statement task with BEGIN...END block")
         
-        # Check for BEGIN/END balance
-        has_begin = 'BEGIN' in task.upper()
-        has_end = 'END' in task.upper()
-        print(f"   Has BEGIN: {has_begin}")
-        print(f"   Has END: {has_end}")
+        # Extract the task definition parts
+        task_match = re.match(r'(.*?AS\s+)(BEGIN.*?END)\s*;?\s*$', sql_content, re.IGNORECASE | re.DOTALL)
+        
+        if task_match:
+            task_header = task_match.group(1).strip()
+            task_body = task_match.group(2).strip()
+            
+            # Wrap the BEGIN...END block in dollar quotes to handle internal semicolons
+            formatted_sql = f"{task_header} $$\n{task_body}\n$$;"
+            
+            print("✅ Applied dollar-quote formatting for multi-statement task")
+            return formatted_sql, "Success"
+        else:
+            print("⚠️ Could not parse BEGIN...END structure, using original format")
+    
+    # Handle simple tasks or tasks already properly formatted
+    if not sql_content.endswith(';'):
+        sql_content += ';'
+    
+    return sql_content, "Success"
+
+def execute_task_statements_sequentially(cursor, sql_content, replacements=None):
+    """Execute SQL by handling USE statements separately and task creation as single unit"""
+    
+    print(f"\n🔍 Processing SQL content ({len(sql_content)} characters)")
+    
+    # Replace parameters
+    if replacements:
+        for key, value in replacements.items():
+            sql_content = sql_content.replace(f'{{{key}}}', value)
+    
+    # Split into logical statements but keep task creation as one unit
+    statements = []
+    
+    # Extract USE statements first
+    use_statements = re.findall(r'USE\s+(?:DATABASE|SCHEMA)\s+[^;]+;', sql_content, re.IGNORECASE)
+    for use_stmt in use_statements:
+        statements.append(use_stmt.strip())
+    
+    # Remove USE statements from content to get the task creation
+    task_content = sql_content
+    for use_stmt in use_statements:
+        task_content = task_content.replace(use_stmt, '').strip()
+    
+    # Process the task creation
+    if task_content:
+        formatted_task, status = prepare_task_sql(task_content, replacements)
+        if formatted_task:
+            statements.append(formatted_task)
+        else:
+            print(f"❌ Failed to prepare task SQL: {status}")
+            return False
+    
+    # Execute statements sequentially
+    for i, statement in enumerate(statements, 1):
+        if not statement.strip():
+            continue
+            
+        print(f"\n🚀 Executing statement {i}:")
+        print("-" * 60)
+        print(statement)
+        print("-" * 60)
         
         try:
-            # Extract task name for better logging
-            task_name_match = re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?TASK\s+([\w.]+)', task, re.IGNORECASE)
-            task_name = task_name_match.group(1) if task_name_match else f"Task_{i+1}"
+            cursor.execute(statement)
             
-            print(f"\n🚀 Executing task: {task_name}")
-            print("📋 Complete Task SQL being sent to Snowflake:")
-            print("-" * 60)
-            print(task)
-            print("-" * 60)
-            
-            # Validate task structure before execution
-            if has_begin and not has_end:
-                print("❌ ERROR: Task contains BEGIN but no END block!")
-                raise ValueError(f"Incomplete task structure for {task_name} - missing END block")
-            
-            # Execute the complete task as a single statement
-            cursor.execute(task)
-            print("✅ Task created/updated successfully")
-            
+            # Identify statement type for better logging
+            if statement.upper().startswith('USE'):
+                print("✅ Context set successfully")
+            elif 'CREATE' in statement.upper() and 'TASK' in statement.upper():
+                # Extract task name
+                task_name_match = re.search(r'CREATE\s+(?:OR\s+REPLACE\s+)?TASK\s+([\w.]+)', statement, re.IGNORECASE)
+                task_name = task_name_match.group(1) if task_name_match else "TASK"
+                print(f"✅ Task '{task_name}' created/updated successfully")
+            else:
+                print("✅ Statement executed successfully")
+                
         except Exception as e:
-            print(f"❌ Error executing task {task_name}: {e}")
-            print(f"🔍 Debug info:")
-            print(f"   Task SQL length: {len(task)} characters")
-            print(f"   Task starts: '{task[:100]}'")
-            print(f"   Task ends: '{task[-100:]}'" if len(task) > 100 else f"   Complete task: '{task}'")
+            print(f"❌ Error executing statement: {e}")
+            print(f"🔍 Statement that failed:")
+            print(f"   Length: {len(statement)} characters")
+            print(f"   Content preview: {statement[:200]}{'...' if len(statement) > 200 else ''}")
             raise
+    
+    return True
 
-def deploy_tasks_debug(environment):
-    """Deploy tasks with extensive debugging"""
+def execute_task_file_enhanced(cursor, file_path, replacements=None):
+    """Execute task file with enhanced multi-semicolon support"""
+    print(f"\n🔍 Processing file: {file_path}")
+    
+    try:
+        # Read file content
+        with open(file_path, 'r', encoding='utf-8') as file:
+            sql_content = file.read()
+        
+        print(f"📄 File content loaded ({len(sql_content)} characters)")
+        
+        # Show content preview
+        print("📋 Content preview:")
+        print("=" * 60)
+        preview = sql_content[:300] + ('...' if len(sql_content) > 300 else '')
+        print(preview)
+        print("=" * 60)
+        
+        # Execute using sequential method
+        success = execute_task_statements_sequentially(cursor, sql_content, replacements)
+        
+        if success:
+            print(f"✅ Successfully processed {file_path}")
+        else:
+            print(f"❌ Failed to process {file_path}")
+            
+        return success
+        
+    except Exception as e:
+        print(f"❌ Error processing file {file_path}: {e}")
+        raise
+
+def deploy_tasks_enhanced(environment):
+    """Deploy tasks with enhanced multi-semicolon support"""
+    print(f"🚀 Starting enhanced task deployment for {environment.upper()}")
+    
+    config = load_config(environment)
+    
+    print(f"\n📊 Environment configuration:")
+    print(f"   Database: {config.get('database', 'Not specified')}")
+    print(f"   Warehouse: {config.get('warehouse', 'Not specified')}")
+    print(f"   Role: {config.get('role', 'Not specified')}")
+    
+    # Connect to Snowflake
+    print(f"\n🔌 Connecting to Snowflake...")
+    conn = connect_snowflake()
+    cursor = conn.cursor()
+    print("✅ Connected successfully")
+    
+    try:
+        # Parameter replacements
+        replacements = {
+            'DATABASE_NAME': config.get('database', ''),
+            'WAREHOUSE_NAME': config.get('warehouse', ''),
+            'ROLE_NAME': config.get('role', '')
+        }
+        
+        print(f"\n🔧 Parameter replacements:")
+        for key, value in replacements.items():
+            print(f"   {key} → {value}")
+        
+        # Find and deploy tasks
+        folder_path = f"scripts/{environment}/tasks"
+        print(f"\n📂 Looking for tasks in: {folder_path}")
+        
+        if not os.path.exists(folder_path):
+            print(f"❌ Tasks directory not found at {folder_path}")
+            return False
+        
+        print(f"✅ Tasks directory found")
+        
+        # Get all SQL files
+        sql_files = glob.glob(f"{folder_path}/*.sql")
+        sql_files.sort()  # Ensure consistent order
+        
+        print(f"📁 Found {len(sql_files)} SQL file(s):")
+        for sql_file in sql_files:
+            print(f"   - {os.path.basename(sql_file)}")
+        
+        if not sql_files:
+            print("⚠️ No .sql files found in tasks directory")
+            return False
+        
+        # Process each file
+        success_count = 0
+        total_count = len(sql_files)
+        
+        for sql_file in sql_files:
+            print(f"\n" + "=" * 80)
+            print(f"🗃️ Processing: {os.path.basename(sql_file)}")
+            print("=" * 80)
+            
+            try:
+                if execute_task_file_enhanced(cursor, sql_file, replacements):
+                    success_count += 1
+                else:
+                    print(f"❌ Failed to process {os.path.basename(sql_file)}")
+            except Exception as e:
+                print(f"❌ Exception while processing {os.path.basename(sql_file)}: {e}")
+        
+        # Summary
+        print(f"\n" + "=" * 80)
+        print(f"📊 DEPLOYMENT SUMMARY")
+        print("=" * 80)
+        print(f"✅ Successful: {success_count}/{total_count}")
+        print(f"❌ Failed: {total_count - success_count}/{total_count}")
+        
+        if success_count == total_count:
+            print(f"🎉 All tasks deployed successfully to {environment.upper()}!")
+            return True
+        else:
+            print(f"⚠️ Some tasks failed to deploy to {environment.upper()}")
+            return False
+        
+    finally:
+        print(f"\n🔌 Closing connection...")
+        cursor.close()
+        conn.close()
+        print("✅ Connection closed")
+
+def simulate_snow_sql_command(environment, sql_file_path):
+    """Simulate the 'snow sql -f' command behavior"""
+    print(f"🎯 Simulating: snow sql -f {sql_file_path}")
+    print(f"📍 Environment: {environment}")
+    
+    # This function mimics what the snow CLI would do
+    # but using the Python connector instead
+    
     config = load_config(environment)
     conn = connect_snowflake()
     cursor = conn.cursor()
@@ -135,49 +262,39 @@ def deploy_tasks_debug(environment):
     try:
         # Parameter replacements
         replacements = {
-            'DATABASE_NAME': config['database'],
-            'WAREHOUSE_NAME': config['warehouse'],
-            'ROLE_NAME': config['role']
+            'DATABASE_NAME': config.get('database', ''),
+            'WAREHOUSE_NAME': config.get('warehouse', ''),
+            'ROLE_NAME': config.get('role', '')
         }
         
-        print(f"🔧 Configuration for {environment}:")
-        for key, value in replacements.items():
-            print(f"   {key}: {value}")
-        
-        # Deploy tasks only
-        folder_path = f"scripts/{environment}/tasks"
-        print(f"\n📂 Looking for tasks in: {folder_path}")
-        
-        if os.path.exists(folder_path):
-            print(f"✅ Tasks directory found")
-            sql_files = glob.glob(f"{folder_path}/*.sql")
-            sql_files.sort()  # Ensure consistent order
-            
-            print(f"📁 Found {len(sql_files)} SQL file(s):")
-            for sql_file in sql_files:
-                print(f"   - {sql_file}")
-            
-            if not sql_files:
-                print("⚠️ No .sql files found in tasks directory")
-                return
-            
-            for sql_file in sql_files:
-                print(f"\n" + "="*80)
-                print(f"🗃️ Processing task file: {sql_file}")
-                print("="*80)
-                execute_task_file_debug(cursor, sql_file, replacements)
-        else:
-            print(f"❌ Tasks directory not found at {folder_path}")
-        
-        print(f"\n🎉 {environment.upper()} tasks deployment completed successfully!")
+        return execute_task_file_enhanced(cursor, sql_file_path, replacements)
         
     finally:
         cursor.close()
         conn.close()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Deploy Tasks to Snowflake environment with debugging')
-    parser.add_argument('--environment', required=True, choices=['dev', 'prod'])
+    parser = argparse.ArgumentParser(description='Deploy Tasks to Snowflake with multi-semicolon support')
+    parser.add_argument('--environment', required=True, choices=['dev', 'prod'], 
+                       help='Target environment')
+    parser.add_argument('--file', type=str, 
+                       help='Single SQL file to execute (simulates snow sql -f)')
+    
     args = parser.parse_args()
     
-    deploy_tasks_debug(args.environment)
+    try:
+        if args.file:
+            # Simulate single file execution like 'snow sql -f'
+            success = simulate_snow_sql_command(args.environment, args.file)
+            exit(0 if success else 1)
+        else:
+            # Deploy all tasks in directory
+            success = deploy_tasks_enhanced(args.environment)
+            exit(0 if success else 1)
+            
+    except KeyboardInterrupt:
+        print(f"\n⏹️ Deployment interrupted by user")
+        exit(1)
+    except Exception as e:
+        print(f"\n💥 Deployment failed with error: {e}")
+        exit(1)

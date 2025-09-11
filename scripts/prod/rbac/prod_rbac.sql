@@ -23,9 +23,9 @@ CREATE SCHEMA IF NOT EXISTS TRUSTCAB_PROD.SCH_TRUSTCAB_SILVER
 CREATE SCHEMA IF NOT EXISTS TRUSTCAB_PROD.SCH_TRUSTCAB_GOLD
     COMMENT = 'Curated/Consumption layer - Gold layer for analytics';
 
-create or replace schema CORTEX_DEMO_SCH COMMENT='Temporary schema for Cortex AI demo';
+CREATE SCHEMA IF NOT EXISTS TRUSTCAB_PROD.CORTEX_DEMO_SCH COMMENT='Temporary schema for Cortex AI demo';
 
-create or replace schema SCH_TRUSTCAB_AUDIT;    
+CREATE SCHEMA IF NOT EXISTS TRUSTCAB_PROD.SCH_TRUSTCAB_AUDIT COMMENT='To maintain orchestration objects';    
 
 
 

@@ -385,16 +385,6 @@ GRANT SELECT ON FUTURE VIEWS IN SCHEMA TRUSTCAB_PROD.SCH_TRUSTCAB_GOLD TO DATABA
 GRANT SELECT ON FUTURE MATERIALIZED VIEWS IN SCHEMA TRUSTCAB_PROD.SCH_TRUSTCAB_GOLD TO DATABASE ROLE AR_PROD_CSM_RO;
 
 -- ===================================================================
--- SECTION : user management
--- ===================================================================
--- GRANT ROLE FR_PROD_DATA_ENGINEER TO USER RSAWANE;
--- GRANT ROLE FR_PROD_DATA_ANALYST TO USER RSAWANE;
--- GRANT ROLE FR_PROD_ETL TO USER RSAWANE;
--- GRANT ROLE FR_PROD_BI TO USER RSAWANE;
-
-
-
--- ===================================================================
 -- SECTION 14: added while debugging
 -- ===================================================================
 

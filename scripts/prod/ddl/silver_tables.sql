@@ -7,7 +7,7 @@ create or replace dynamic table SCH_TRUSTCAB_SILVER.CITY_TARGET_PASSENGER_RATING
 	SOURCE_FILE,
 	FILE_ROW_NUM,
 	LOAD_TIMESTAMP
-) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_DEV_DATA_ENGINEER
+) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_PROD_DATA_ENGINEER
  as
 SELECT * FROM SCH_TRUSTCAB_BRONZE.CITY_TARGET_PASSENGER_RATING;
 
@@ -17,7 +17,7 @@ create or replace dynamic table SCH_TRUSTCAB_SILVER.DIM_CITY_DYNAMIC(
 	SOURCE_FILE,
 	FILE_ROW_NUM,
 	LOAD_TIMESTAMP
-) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_DEV_DATA_ENGINEER
+) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_PROD_DATA_ENGINEER
  as
 SELECT * FROM SCH_TRUSTCAB_BRONZE.DIM_CITY;
 
@@ -26,7 +26,7 @@ create or replace dynamic table SCH_TRUSTCAB_SILVER.DIM_DATE_DYNAMIC(
 	START_OF_MONTH,
 	MONTH_NAME,
 	DAY_TYPE
-) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_DEV_DATA_ENGINEER
+) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_PROD_DATA_ENGINEER
  as
 SELECT * FROM SCH_TRUSTCAB_BRONZE.DIM_DATE;
 
@@ -38,7 +38,7 @@ create or replace dynamic table SCH_TRUSTCAB_SILVER.DIM_REPEAT_TRIP_DISTRIBUTION
 	SOURCE_FILE,
 	FILE_ROW_NUM,
 	LOAD_TIMESTAMP
-) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_DEV_DATA_ENGINEER
+) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_PROD_DATA_ENGINEER
  as
 SELECT * FROM SCH_TRUSTCAB_BRONZE.DIM_REPEAT_TRIP_DISTRIBUTION;
 
@@ -51,7 +51,7 @@ create or replace dynamic table SCH_TRUSTCAB_SILVER.FACT_PASSENGER_SUMMARY_DYNAM
 	SOURCE_FILE,
 	FILE_ROW_NUM,
 	LOAD_TIMESTAMP
-) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_DEV_DATA_ENGINEER
+) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_PROD_DATA_ENGINEER
  as
 SELECT * FROM SCH_TRUSTCAB_BRONZE.FACT_PASSENGER_SUMMARY;
 
@@ -64,7 +64,7 @@ create or replace dynamic table SCH_TRUSTCAB_SILVER.FACT_TRIPS_DYNAMIC(
 	FARE_AMOUNT,
 	PASSENGER_RATING,
 	DRIVER_RATING
-) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_DEV_DATA_ENGINEER
+) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_PROD_DATA_ENGINEER
  as
 SELECT * FROM SCH_TRUSTCAB_BRONZE.FACT_TRIPS;
 
@@ -75,7 +75,7 @@ create or replace dynamic table SCH_TRUSTCAB_SILVER.MONTHLY_TARGET_NEW_PASSENGER
 	SOURCE_FILE,
 	FILE_ROW_NUM,
 	LOAD_TIMESTAMP
-) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_DEV_DATA_ENGINEER
+) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_PROD_DATA_ENGINEER
  as
 SELECT * FROM SCH_TRUSTCAB_BRONZE.MONTHLY_TARGET_NEW_PASSENGERS;
 
@@ -86,6 +86,6 @@ create or replace dynamic table SCH_TRUSTCAB_SILVER.MONTHLY_TARGET_TRIPS_DYNAMIC
 	SOURCE_FILE,
 	FILE_ROW_NUM,
 	LOAD_TIMESTAMP
-) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_DEV_DATA_ENGINEER
+) target_lag = 'DOWNSTREAM' refresh_mode = AUTO initialize = ON_CREATE warehouse = WH_PROD_DATA_ENGINEER
  as
 SELECT * FROM SCH_TRUSTCAB_BRONZE.MONTHLY_TARGET_TRIPS;

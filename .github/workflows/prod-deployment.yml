@@ -63,10 +63,10 @@ jobs:
           exit 1
         fi
         
-        if [ -f "scripts/utils/deploy_tasks.py" ]; then
+        if [ -f "scripts/utils/deploy_tables.py" ]; then
           echo "✅ Tasks deployment script found"
         else
-          echo "❌ scripts/utils/deploy_tasks.py not found"
+          echo "❌ scripts/utils/deploy_tables.py not found"
           exit 1
         fi
         
@@ -188,7 +188,7 @@ jobs:
         SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
       run: |
         echo "🚀 Starting tasks deployment..."
-        python scripts/utils/deploy_tasks.py --environment prod
+        python scripts/utils/deploy_tables.py --environment prod
     
   post-deployment-validation:
     needs: [deploy-ddl-tables, deploy-stored-procedures, deploy-tasks]

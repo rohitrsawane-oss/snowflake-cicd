@@ -1,18 +1,12 @@
 data_quality_checks:
   null_checks:
-    - table: "BRONZE.CUSTOMER"
-      columns: ["CUSTOMER_ID", "EMAIL"]
-    - table: "SILVER.ORDERS"
-      columns: ["ORDER_ID", "CUSTOMER_ID"]
+    - table: "BRONZE.FACT_TRIPS"
+      columns: ["CITY_ID", "MONTH"]
   
   unique_checks:
-    - table: "BRONZE.CUSTOMER"
-      columns: ["CUSTOMER_ID", "EMAIL"]
-    - table: "SILVER.ORDERS"
-      columns: ["ORDER_ID"]
+    - table: "BRONZE.FACT_TRIPS"
+      columns: ["CITY_ID"]
   
   count_checks:
-    - table: "BRONZE.CUSTOMER"
-      min_count: 1
-    - table: "SILVER.ORDERS"
+    - table: "BRONZE.FACT_TRIPS"
       min_count: 1

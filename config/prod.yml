@@ -1,5 +1,5 @@
 environment: prod
-database: TRUSTCAB_QA
+database: TRUSTCAB_PROD
 schemas:
   - SCH_TRUSTCAB_BRONZE
   - SCH_TRUSTCAB_SILVER
